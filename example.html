@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <title>graphiti.js example</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <canvas id="c" height="500" width="500"></canvas>
+    <script src="graph.js"></script>
+    <script>
+      var a = document.body;
+      var b = document.getElementById ('c');
+
+      var plane = new Plane (b);
+
+      var na = plane.createNode ('a');
+      var nb = plane.createNode ('b');
+      var nc = plane.createNode ('c');
+      var la = plane.createLink (na, nb);
+      var lb = plane.createLink (nb, nc);
+      var lc = plane.createLink (na, nc);
+
+      plane.organize ('random');
+
+      var el = new EventLayer (plane, {showTrace: true});
+      el.connect ();
+
+      plane.draw ();
+
+      var cleared = true;
+      plane.on ('mousemove', function (e) {
+        var position = plane.getMousePosition (e);
+        var item = el.getItemByPosition (position.x, position.y);
+        
+        if (item) {
+          plane.clear ();
+          plane.highlight (item);
+          cleared = false;
+        } else {
+          if (cleared === false) {
+            plane.clear ();
+            plane.draw ();
+            cleared = true;
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
+
