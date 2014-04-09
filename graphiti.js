@@ -81,6 +81,26 @@ Plane.prototype.organize = function (rule) {
       node.x = Math.random ()*(xmax - xmin) + xmin + this.nodeRadius;
       node.y = Math.random ()*(ymax - ymin) + ymin + this.nodeRadius;
     }, this);
+  } else if (rule === 'harmony') {
+    var nb = this.nodes.length;
+    radius = Math.sqrt (this.width*this.height/(Math.PI*nb));
+    var nodes = [];
+    this.nodes.forEach (function (node, index) {
+      var val, x, y;
+      do {
+        x = Math.random ()*(this.width - 2*this.nodeRadius) + this.nodeRadius;
+        y = Math.random ()*(this.height - 2*this.nodeRadius) + this.nodeRadius;
+        val = nodes.every (function (elem) {
+          return Math.sqrt ((x - elem.x)*(x - elem.x) + (y - elem.y)*(y - elem.y)) > radius;
+        });
+      } while (val === false);
+      nodes.push ({
+        x: x,
+        y: y
+      });
+      node.x = x;
+      node.y = y;
+    }, this);
   } else {
     this.nodes.forEach (function (node) {
       node.x = Math.random ()*(this.width - 2*this.nodeRadius) + this.nodeRadius;
