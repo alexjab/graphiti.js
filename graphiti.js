@@ -83,7 +83,7 @@ Plane.prototype.organize = function (rule) {
     }, this);
   } else if (rule === 'harmony') {
     var nb = this.nodes.length;
-    radius = Math.sqrt (this.width*this.height/(Math.PI*nb));
+    var radius = Math.sqrt (this.width*this.height/(Math.PI*nb));
     var nodes = [];
     this.nodes.forEach (function (node, index) {
       var val, x, y;
@@ -127,6 +127,7 @@ Plane.prototype.getMousePosition = function (e) {
 var EventLayer = function (plane, options) {
   this.plane = plane;
   this.items = [];
+  this.item_on = null;
 
   options = options || {};
   this.showTrace = options.showTrace || false;
@@ -135,6 +136,27 @@ var EventLayer = function (plane, options) {
   this.linkOverlapRatio = options.linkOverlapRatio || 1.0;
   this.nodeModel = options.nodeModel || 'circle';
   this.nodeAccuracy = options.nodeAccuracy || this.nodeModel === 'circle'?20:25;
+
+  var self = this;
+  this.plane.on ('mousemove', function (e) {
+    var position = plane.getMousePosition (e);
+    var item = el.getItemByPosition (position.x, position.y);
+    if (item) {
+      var evt = new CustomEvent ('el_mouseover', {detail: item});
+      document.dispatchEvent (evt);
+      if (!self.item_on || (self.item_on && self.item_on.item.id !== item.item.id)) {
+        var evt = new CustomEvent ('el_mousein', {detail: item});
+        document.dispatchEvent (evt);
+      }
+      self.item_on = item;
+    } else {
+      if (self.item_on) {
+        var evt = new CustomEvent ('el_mouseout', {detail: self.item_on});
+        document.dispatchEvent (evt);
+      }
+      self.item_on = null;
+    }
+  });
 };
 
 EventLayer.prototype.connect = function () {
@@ -214,6 +236,12 @@ EventLayer.prototype.getItemByPosition = function (x, y) {
     }
     return memo;
   }, null);
+};
+
+EventLayer.prototype.on = function (_event, cb) {
+  document.addEventListener ('el_'+_event, function (e) {
+    cb (e, e.detail);
+  });
 };
 
 var Link = function (plane, na, nb) {

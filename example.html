@@ -38,22 +38,17 @@
       plane.draw ();
 
       var cleared = true;
-      plane.on ('mousemove', function (e) {
-        var position = plane.getMousePosition (e);
-        var item = el.getItemByPosition (position.x, position.y);
-        
-        if (item) {
-          plane.clear ();
-          plane.draw ();
-          plane.highlight (item);
-          cleared = false;
-        } else {
-          if (cleared === false) {
-            plane.clear ();
-            plane.draw ();
-            cleared = true;
-          }
-        }
+      el.on ('mousein', function (event, item) {
+        plane.clear ();
+        plane.draw ();
+        plane.highlight (item);
+      });
+      el.on ('mouseout', function (event, item) {
+        plane.clear ();
+        plane.draw ();
+      });
+      el.on ('mouseover', function (event, item) {
+        console.log (item.item.id);
       });
     </script>
   </body>
