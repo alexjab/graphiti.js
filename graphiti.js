@@ -49,13 +49,7 @@ Plane.prototype.highlight = function (item) {
 };
 
 Plane.prototype.organize = function (rule) {
-  if (rule === 'random') {
-    this.nodes.forEach (function (node) {
-      node.x = Math.random ()*(this.width - 2*this.nodeRadius) + this.nodeRadius;
-      node.y = Math.random ()*(this.height - 2*this.nodeRadius) + this.nodeRadius;
-    }, this);
-  }
-  if (rule === 'harmony') {
+ if (rule === 'random-circle') {
     var nb = this.nodes.length;
     this.nodes.forEach (function (node, index) {
       var min = Math.PI*2*index/nb;
@@ -69,7 +63,28 @@ Plane.prototype.organize = function (rule) {
 
       node.x = cos;
       node.y = sin;
+    }, this);
+  } else if (rule === 'random-square') {
+    var nb = this.nodes.length;
+    var cols = Math.ceil (Math.sqrt (nb));
+    var rows = Math.ceil (nb/cols);
+    var width = this.width - 2*this.nodeRadius;
+    var height = this.height - 2*this.nodeRadius;
 
+    this.nodes.forEach (function (node, index) {
+      var xmin = (index%cols)*width/cols;
+      var ymin = (Math.floor (index/cols))*height/rows;
+
+      var xmax = xmin + width/cols;
+      var ymax = ymin + height/rows;
+
+      node.x = Math.random ()*(xmax - xmin) + xmin + this.nodeRadius;
+      node.y = Math.random ()*(ymax - ymin) + ymin + this.nodeRadius;
+    }, this);
+  } else {
+    this.nodes.forEach (function (node) {
+      node.x = Math.random ()*(this.width - 2*this.nodeRadius) + this.nodeRadius;
+      node.y = Math.random ()*(this.height - 2*this.nodeRadius) + this.nodeRadius;
     }, this);
   }
 };
@@ -97,7 +112,7 @@ var EventLayer = function (plane, options) {
   this.showTrace = options.showTrace || false;
   this.linkModel = options.linkModel || 'circle';
   this.linkAccuracy = options.linkAccuracy || 10.0;
-  this.linkOverlapRatio = options.linkOverlapRatio || this.linkModel === 'circle'?1.5:1.0;
+  this.linkOverlapRatio = options.linkOverlapRatio || 1.0;
   this.nodeModel = options.nodeModel || 'circle';
   this.nodeAccuracy = options.nodeAccuracy || this.nodeModel === 'circle'?20:25;
 };
@@ -105,21 +120,23 @@ var EventLayer = function (plane, options) {
 EventLayer.prototype.connect = function () {
   this.plane.links.forEach (function (link) {
     var length = link.length ();
-    var acc = 2*this.linkAccuracy;
+    var acc = this.linkAccuracy;
     var overlapRatio = this.linkOverlapRatio;
     for (var i = 1;i < Math.ceil (overlapRatio*length/acc);i++) {
       var x = link.head.x + (link.tail.x - link.head.x)*(i*acc/(length*overlapRatio));
       var y = link.head.y + (link.tail.y - link.head.y)*(i*acc/(length*overlapRatio));
-      this.items.push ({ item: link, x: x, y: y });
+      var coverage = Math.sqrt ((link.head.x - x)*(link.head.x - x) + (link.head.y - y)*(link.head.y - y))/length;
+      this.items.push ({ item: link, x: x, y: y, accuracy: acc, coverage: coverage });
       if (this.showTrace) {
-        this.drawTrace.apply (this, ['link', x, y]);
+        this.drawTrace.apply (this, ['link', x, y, acc, coverage]);
       };
     }
   }, this);
   this.plane.nodes.forEach (function (node) {
-    this.items.push ({ item: node, x: node.x, y: node.y });
+    var acc = this.nodeAccuracy;
+    this.items.push ({ item: node, x: node.x, y: node.y, accuracy: acc });
     if (this.showTrace) {
-      this.drawTrace.apply (this, ['node', node.x, node.y]);
+      this.drawTrace.apply (this, ['node', node.x, node.y, acc]);
     };
   }, this);
   if (this.showTrace) {
@@ -129,14 +146,18 @@ EventLayer.prototype.connect = function () {
   return this;
 };
 
-EventLayer.prototype.drawTrace = function (type, x, y) {
+EventLayer.prototype.drawTrace = function (type, x, y, accuracy, coverage) {
   this.plane.ctx.strokeStyle='#F00';
-  var acc, model;
+  var ratio = 1.0;
+  if (coverage) {
+    coverage = (coverage > 0.5)?(1-coverage):coverage;
+    ratio = 0.5+Math.log (2*coverage+1);
+  }
+  var model;
+  var acc = accuracy*ratio;
   if (type === 'link') {
-    acc = this.linkAccuracy;
     model = this.linkModel;
   } else if (type === 'node') {
-    acc = this.nodeAccuracy;
     model = this.nodeModel;
   }
   if (model === 'square') {
@@ -153,10 +174,16 @@ EventLayer.prototype.drawTrace = function (type, x, y) {
 
 EventLayer.prototype.getItemByPosition = function (x, y) {
   var model = this.linkModel;
-  var self = this;
+  var accuracy = this.nodeAccuracy;
 
   return this.items.reduce (function (memo, item) {
-    var acc = self.nodeAccuracy;
+    var ratio = 1.0;
+    if (item.coverage) {
+      var coverage = item.coverage;
+      coverage = (coverage > 0.5)?(1-coverage):coverage;
+      ratio = 0.5+Math.log (2*coverage+1);
+    }
+    var acc = accuracy*ratio;
     if (model === 'square') {
       if (x > item.x - acc && x < item.x + acc && y > item.y - acc && y < item.y + acc)
         return item;
