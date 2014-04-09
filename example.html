@@ -16,13 +16,23 @@
       var na = plane.createNode ('a');
       var nb = plane.createNode ('b');
       var nc = plane.createNode ('c');
+      var nd = plane.createNode ('d');
+      var ne = plane.createNode ('e');
+      var nf = plane.createNode ('f');
+      var ng = plane.createNode ('g');
       var la = plane.createLink (na, nb);
       var lb = plane.createLink (nb, nc);
-      var lc = plane.createLink (na, nc);
+      var lc = plane.createLink (nc, na);
+      var ld = plane.createLink (nd, na);
+      var le = plane.createLink (nd, nb);
+      var le = plane.createLink (nd, ne);
+      var le = plane.createLink (na, nf);
+      var le = plane.createLink (nf, ng);
 
-      plane.organize ('random');
+      plane.organize ('harmony');
 
       var el = new EventLayer (plane);
+      //var el = new EventLayer (plane, {showTrace: true});
       el.connect ();
 
       plane.draw ();
@@ -34,6 +44,7 @@
         
         if (item) {
           plane.clear ();
+          plane.draw ();
           plane.highlight (item);
           cleared = false;
         } else {

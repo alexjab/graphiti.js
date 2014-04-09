@@ -3,67 +3,38 @@ var Plane = function (canvas, options) {
   this.ctx = canvas.getContext ('2d');
   this.height = canvas.height;
   this.width = canvas.width;
-  this.node_l = [];
-  this.node_o = {};
-  this.link_l = [];
-  this.link_o = {};
+  this.nodes = [];
+  this.links = [];
 
   options = options || {};
   this.nodeRadius = options.nodeRadius || 10;
+  this.showNodeTitle = options.showNodeTitle || true;
+  this.showLinkTitle = options.showLinkTitle || false;
 
   return this;
 };
 
 Plane.prototype.createNode = function (id) {
   var n = new Node (this, id);
-  this.node_l.push (n);
-  this.node_o[id] = n;
+  this.nodes.push (n);
 
   return n;
 };
 
 Plane.prototype.createLink = function (na, nb) {
   var l = new Link (this, na, nb);
-  this.link_l.push (l);
-  this.link_o[na.id+':'+nb.id] = l;
+  this.links.push (l);
 
   return l;
 };
 
-Plane.prototype.draw = function (item) {
-  if (!item) {
-    this.link_l.forEach (function (link) {
-      link.drawLink ();
-    }, this);
-    this.node_l.forEach (function (node) {
-      node.drawNode ();
-    }, this);
-  } else {
-    if (item.link) {
-      this.link_l.forEach (function (link) {
-        if (item.link.id === link.id) {
-          link.drawLink (true);
-        } else {
-          link.drawLink ();
-        }
-      }, this);
-      this.node_l.forEach (function (node) {
-        node.drawNode ();
-      }, this);
-    }
-    if (item.node) {
-      this.node_l.forEach (function (node) {
-        if (item.node.id === node.id) {
-          node.drawNode (true);
-        } else {
-          node.drawNode ();
-        }
-      }, this);
-      this.link_l.forEach (function (link) {
-        link.drawLink ();
-      }, this);
-    }
-  }
+Plane.prototype.draw = function () {
+  this.links.forEach (function (link) {
+    link.draw ();
+  }, this);
+  this.nodes.forEach (function (node) {
+    node.draw ();
+  }, this);
 
   return this;
 };
@@ -74,15 +45,31 @@ Plane.prototype.clear = function () {
 };
 
 Plane.prototype.highlight = function (item) {
-  this.draw.apply (this, [item]);
+  item.item.draw (true);
 };
 
 Plane.prototype.organize = function (rule) {
   if (rule === 'random') {
-    this.node_l.forEach (function (node) {
+    this.nodes.forEach (function (node) {
       node.x = Math.random ()*(this.width - 2*this.nodeRadius) + this.nodeRadius;
       node.y = Math.random ()*(this.height - 2*this.nodeRadius) + this.nodeRadius;
-      this.node_o[node.id] = node;
+    }, this);
+  }
+  if (rule === 'harmony') {
+    var nb = this.nodes.length;
+    this.nodes.forEach (function (node, index) {
+      var min = Math.PI*2*index/nb;
+      var max = Math.PI*2*(index+1)/nb;
+      var rand_angle = Math.random ()*(max - min) + min;
+      var rand_radius = Math.random ()*(this.width/2 - this.width/8) + this.width/8;
+      var rand_radius = 125;
+
+      var cos = this.width/2 + rand_radius*Math.cos (rand_angle);
+      var sin = this.width/2 + rand_radius*Math.sin (rand_angle);
+
+      node.x = cos;
+      node.y = sin;
+
     }, this);
   }
 };
@@ -104,8 +91,7 @@ Plane.prototype.getMousePosition = function (e) {
 
 var EventLayer = function (plane, options) {
   this.plane = plane;
-  this.link_l = [];
-  this.node_l = [];
+  this.items = [];
 
   options = options || {};
   this.showTrace = options.showTrace || false;
@@ -113,28 +99,27 @@ var EventLayer = function (plane, options) {
   this.linkAccuracy = options.linkAccuracy || 10.0;
   this.linkOverlapRatio = options.linkOverlapRatio || this.linkModel === 'circle'?1.5:1.0;
   this.nodeModel = options.nodeModel || 'circle';
-  this.nodeOverflowRatio = options.nodeOverflowRatio || this.linkModel === 'circle'?1.2:1.5;
+  this.nodeAccuracy = options.nodeAccuracy || this.nodeModel === 'circle'?20:25;
 };
 
 EventLayer.prototype.connect = function () {
-  this.plane.link_l.forEach (function (link) {
+  this.plane.links.forEach (function (link) {
     var length = link.length ();
     var acc = 2*this.linkAccuracy;
     var overlapRatio = this.linkOverlapRatio;
     for (var i = 1;i < Math.ceil (overlapRatio*length/acc);i++) {
       var x = link.head.x + (link.tail.x - link.head.x)*(i*acc/(length*overlapRatio));
       var y = link.head.y + (link.tail.y - link.head.y)*(i*acc/(length*overlapRatio));
-      this.link_l.push ({ link: link, x: x, y: y });
+      this.items.push ({ item: link, x: x, y: y });
       if (this.showTrace) {
-        this.drawTrace.apply (this, [x, y]);
+        this.drawTrace.apply (this, ['link', x, y]);
       };
     }
   }, this);
-  this.plane.node_l.forEach (function (node) {
-    var overflowRatio = this.nodeOverflowRatio;
-    this.node_l.push ({ node: node, x: node.x, y: node.y });
+  this.plane.nodes.forEach (function (node) {
+    this.items.push ({ item: node, x: node.x, y: node.y });
     if (this.showTrace) {
-      this.drawTrace.apply (this, [node.x, node.y]);
+      this.drawTrace.apply (this, ['node', node.x, node.y]);
     };
   }, this);
   if (this.showTrace) {
@@ -144,10 +129,16 @@ EventLayer.prototype.connect = function () {
   return this;
 };
 
-EventLayer.prototype.drawTrace = function (x, y) {
+EventLayer.prototype.drawTrace = function (type, x, y) {
   this.plane.ctx.strokeStyle='#F00';
-  var acc = this.linkAccuracy;
-  var model = this.linkModel;
+  var acc, model;
+  if (type === 'link') {
+    acc = this.linkAccuracy;
+    model = this.linkModel;
+  } else if (type === 'node') {
+    acc = this.nodeAccuracy;
+    model = this.nodeModel;
+  }
   if (model === 'square') {
     this.plane.ctx.strokeRect (x-acc, y-acc, 2*acc, 2*acc);
   } else if (model === 'circle') {
@@ -164,8 +155,8 @@ EventLayer.prototype.getItemByPosition = function (x, y) {
   var model = this.linkModel;
   var self = this;
 
-  var return_node = this.node_l.reduce (function (memo, item) {
-    var acc = self.nodeOverflowRatio*self.plane.nodeRadius;
+  return this.items.reduce (function (memo, item) {
+    var acc = self.nodeAccuracy;
     if (model === 'square') {
       if (x > item.x - acc && x < item.x + acc && y > item.y - acc && y < item.y + acc)
         return item;
@@ -176,19 +167,6 @@ EventLayer.prototype.getItemByPosition = function (x, y) {
     }
     return memo;
   }, null);
-  var return_link = this.link_l.reduce (function (memo, item) {
-    var acc = self.linkAccuracy;
-    if (model === 'square') {
-      if (x > item.x - acc && x < item.x + acc && y > item.y - acc && y < item.y + acc)
-        return item;
-    } else if (model === 'circle') {
-      if ((x - item.x)*(x - item.x) + (y - item.y)*(y - item.y) < acc*acc) {
-        return item;
-      }
-    }
-    return memo;
-  }, null);
-  return return_node || return_link;
 };
 
 var Link = function (plane, na, nb) {
@@ -197,9 +175,23 @@ var Link = function (plane, na, nb) {
   this.head = na;
   this.tail = nb;
   this.cost = 0;
+  this.title = '';
+
+  this.style = {
+    fillStyle: null,
+    strokeStyle: '#000',
+    lineWidth: 1
+  };
+  this.highlightStyle = {
+    fillStyle: null,
+    strokeStyle: '#000',
+    lineWidth: 2
+  };
+
+  return this;
 };
 
-Link.prototype.drawLink = function (highlight) {
+Link.prototype.draw = function (highlight) {
   this.plane.ctx.beginPath ();
   var cos_head = (this.tail.x - this.head.x)/this.length ();
   var sin_head = (this.tail.y - this.head.y)/this.length ();
@@ -208,12 +200,19 @@ Link.prototype.drawLink = function (highlight) {
   var radius = this.plane.nodeRadius;
   this.plane.ctx.moveTo (this.head.x + cos_head*radius, this.head.y + sin_tail*radius);
   if (highlight) {
-    this.plane.ctx.lineWidth=4;
+    this.plane.ctx.lineWidth=this.highlightStyle.lineWidth;
   }
   this.plane.ctx.lineTo (this.tail.x - cos_tail*radius, this.tail.y - sin_tail*radius);
   this.plane.ctx.stroke ();
+
+  if (this.plane.showLinkTitle) {
+    this.plane.ctx.fillStyle="#000";
+    this.plane.ctx.font="20px sans";
+    this.plane.ctx.fillText (this.title || this.id, this.head.x + (this.tail.x - this.head.x)/2, this.head.y + (this.tail.y - this.head.y)/2);
+  }
+
   this.plane.ctx.closePath ();
-  this.plane.ctx.lineWidth=1;
+  this.plane.ctx.lineWidth=this.style.lineWidth;
 
   return this;
 };
@@ -230,19 +229,38 @@ var Node = function (plane, id) {
   this.x = 0;
   this.y = 0;
 
+  this.style = {
+    fillStyle: null,
+    strokeStyle: '#000',
+    lineWidth: 1
+  };
+  this.highlightStyle = {
+    fillStyle: null,
+    strokeStyle: '#000',
+    lineWidth: 2
+  };
+
   return this;
 };
 
-Node.prototype.drawNode = function (highlight) {
+Node.prototype.draw = function (highlight) {
   this.plane.ctx.beginPath ();
-  this.plane.ctx.strokeStyle="#000";
+  this.plane.ctx.strokeStyle=this.style.strokeColor;
   if (highlight) {
-    this.plane.ctx.lineWidth=4;
+    this.plane.ctx.strokeStyle=this.highlightStyle.strokeStyle;
+    this.plane.ctx.fillStyle=this.highlightStyle.fillStyle;
+    this.plane.ctx.lineWidth=this.highlightStyle.lineWidth;
   }
   this.plane.ctx.arc (this.x,this.y,this.plane.nodeRadius,0,2*Math.PI);
   this.plane.ctx.stroke ();
+
+  this.plane.ctx.fillStyle=this.style.filleStyle;
+  this.plane.ctx.strokeStyle=this.style.strokeStyle;
+  this.plane.ctx.font=(2*this.plane.nodeRadius)+"px sans";
+  this.plane.ctx.fillText (this.title || this.id,this.x - this.plane.nodeRadius/2,this.y + this.plane.nodeRadius/2);
+
   this.plane.ctx.closePath ();
-  this.plane.ctx.lineWidth=1;
+  this.plane.ctx.lineWidth=this.style.lineWidth;
 
   return this;
 };
